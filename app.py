@@ -226,18 +226,16 @@ async def video_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # تشغيل بوت تليجرام في الخلفية
 def run_telegram_bot():
-  application = Application.builder().token(TELEGRAM_TOKEN).build()
-  application.add_handler(CommandHandler("start", start_command))
-  application.add_handler(CommandHandler("video", video_command))
-  application.run_polling()
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
-
-if __name__ == "__main__":
-  # تشغيل بوت تليجرام في خلفية منفصلة ليعمل جنباً إلى جنب مع سيرفر Flask
-  t = threading.Thread(target=run_telegram_bot)
-  t.daemon = True
-  t.start()
-
-  # تشغيل سيرفر Flask للاستجابة لـ Render و UptimeRobot
-  port = int(os.environ.get("PORT", 10000))
-  app.run(host="0.0.0.0", port=port)
+    application = Application.builder().token(os.environ.get("TELEGRAM_TOKEN")).build()
+    
+    # اترك الهاندلرز (Handlers) الخاصة بك هنا كما هي في كودك:
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("video", video_command))
+    
+    application.run_polling()
