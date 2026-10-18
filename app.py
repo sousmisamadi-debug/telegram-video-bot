@@ -5,6 +5,7 @@ import uuid
 import aiohttp
 import subprocess
 import threading
+from urllib.parse import quote
 from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -34,7 +35,7 @@ async def plan_script(topic: str) -> dict:
 5 إلى 7 مشاهد. كل narration جملة واحدة قصيرة. لا تزيد أي شرح خارج JSON."""
     
     resp = await client.aio.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-3.8-flash", # الموديل الجديد اللي طلبتو جوجل
         contents=prompt,
         config=types.GenerateContentConfig(response_mime_type="application/json"),
     )
@@ -42,7 +43,9 @@ async def plan_script(topic: str) -> dict:
 
 # --- 2. وكيل الصور: Pollinations ---
 async def gen_image(session, visual: str, idx: int) -> str:
-    url = f"https://image.pollinations.ai/prompt/{aiohttp.helpers.quote(visual)}"
+    # استعملنا quote من urllib باش نصلحو المشكل ديال الروابط
+    encoded_visual = quote(visual)
+    url = f"https://image.pollinations.ai/prompt/{encoded_visual}"
     params = {"width": 1280, "height": 720, "nologo": "true", "seed": idx * 42 + 7}
     async with session.get(url, params=params, timeout=120) as r:
         r.raise_for_status()
@@ -54,7 +57,7 @@ async def gen_image(session, visual: str, idx: int) -> str:
 # --- 3. وكيل الصوت: Gemini TTS ---
 async def gen_voice(text: str) -> str:
     resp = await client.aio.models.generate_content(
-        model="gemini-2.5-flash-preview-tts",
+        model="gemini-3.8-flash-preview-tts", # الموديل الجديد ديال الصوت
         contents=text,
         config=types.GenerateContentConfig(
             response_modalities=["AUDIO"],
@@ -133,8 +136,8 @@ async def video_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("الرجاء كتابة الموضوع بعد الأمر.\nمثال: /video الذكاء الاصطناعي")
         return
     
-    # إشعار البدء (نفس اللي فالصورة ديالك)
-    msg = await update.message.reply_text(f"⏳ تم استلام موضوعك بنجاح: ({topic}). جاري المعالجة...")
+    # إشعار البدء
+    await update.message.reply_text(f"⏳ تم استلام موضوعك بنجاح: ({topic}). جاري المعالجة...")
     
     try:
         # توليد الفيديو
