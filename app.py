@@ -35,7 +35,7 @@ async def plan_script(topic: str) -> dict:
 5 إلى 7 مشاهد. كل narration جملة واحدة قصيرة. لا تزيد أي شرح خارج JSON."""
     
     resp = await client.aio.models.generate_content(
-        model="gemini-3.8-flash", # الموديل الجديد اللي طلبتو جوجل
+        model="gemini-3.8-flash", 
         contents=prompt,
         config=types.GenerateContentConfig(response_mime_type="application/json"),
     )
@@ -43,7 +43,6 @@ async def plan_script(topic: str) -> dict:
 
 # --- 2. وكيل الصور: Pollinations ---
 async def gen_image(session, visual: str, idx: int) -> str:
-    # استعملنا quote من urllib باش نصلحو المشكل ديال الروابط
     encoded_visual = quote(visual)
     url = f"https://image.pollinations.ai/prompt/{encoded_visual}"
     params = {"width": 1280, "height": 720, "nologo": "true", "seed": idx * 42 + 7}
@@ -54,11 +53,18 @@ async def gen_image(session, visual: str, idx: int) -> str:
             f.write(await r.read())
         return path
 
-# --- 3. وكيل الصوت: Gemini TTS ---
+# --- 3. وكيل الصوت: Gemini TTS (الموديل الجديد) ---
 async def gen_voice(text: str) -> str:
+    # استعملنا البنية الجديدة اللي كتطلبها Google فـ الموديلات الجديدة
     resp = await client.aio.models.generate_content(
-        model="gemini-3.8-flash-preview-tts", # الموديل الجديد ديال الصوت
-        contents=text,
+        model="gemini-3.8-flash-tts", 
+        contents=[{
+            "role": "user",
+            "parts": [{
+                "text": text,
+                "speech_metadata": {"style": "cinematic, clear, informative"} # النبرة
+            }]
+        }],
         config=types.GenerateContentConfig(
             response_modalities=["AUDIO"],
             speech_config=types.SpeechConfig(
@@ -119,7 +125,6 @@ async def main_pipeline(topic: str) -> str:
         "-i", concat_list, "-c", "copy", final
     ], check=True, capture_output=True)
     
-    # تنظيف الملفات المؤقتة
     for p in scenes_mp4 + [concat_list]:
         try: os.remove(p)
         except: pass
@@ -128,31 +133,21 @@ async def main_pipeline(topic: str) -> str:
 
 # --- 6. أوامر البوت ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("أهلاً بك! البوت جاهز.\nأرسل: /video [الموضوع]\nمثال: /video قصة اختراع الذكاء الاصطناعي")
+    await update.message.reply_text("أهلاً بك! البوت جاهز.\nأرسل: /video [الموضوع]")
 
 async def video_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic = " ".join(context.args)
     if not topic:
-        await update.message.reply_text("الرجاء كتابة الموضوع بعد الأمر.\nمثال: /video الذكاء الاصطناعي")
+        await update.message.reply_text("الرجاء كتابة الموضوع بعد الأمر.")
         return
     
-    # إشعار البدء
     await update.message.reply_text(f"⏳ تم استلام موضوعك بنجاح: ({topic}). جاري المعالجة...")
     
     try:
-        # توليد الفيديو
         video_path = await main_pipeline(topic)
-        
-        # إرسال الفيديو
         with open(video_path, 'rb') as v:
-            await update.message.reply_video(
-                video=v,
-                caption=f"🎬 الفيديو ديال: {topic}"
-            )
-        
-        # مسح الفيديو من السيرفر باش ما يعمرش
+            await update.message.reply_video(video=v, caption=f"🎬 الفيديو ديال: {topic}")
         os.remove(video_path)
-        
     except Exception as e:
         await update.message.reply_text(f"❌ وقع خطأ أثناء التوليد: {str(e)}")
 
@@ -163,20 +158,13 @@ def home():
 
 def run_bot():
     if not TELEGRAM_TOKEN:
-        print("TELEGRAM_TOKEN is missing!")
         return
-    
     application = Application.builder().token(TELEGRAM_TOKEN).concurrent_updates(True).build()
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("video", video_command))
-    
-    print("Bot is polling...")
     application.run_polling(allowed_updates=Update.ALL_TYPES, stop_signals=None)
 
 if __name__ == "__main__":
-    # تشغيل البوت في الخلفية
     threading.Thread(target=run_bot, daemon=True).start()
-    
-    # تشغيل Flask
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
